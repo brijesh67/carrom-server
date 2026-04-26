@@ -54,6 +54,7 @@ wss.on('connection', ws => {
       }
       case 'shot':
       case 'new_round':
+      case 'placing':
         send(opponent(ws), msg);
         break;
     }
