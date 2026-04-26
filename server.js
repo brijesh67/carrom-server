@@ -22,6 +22,9 @@ function opponent(ws) {
 wss.on('connection', ws => {
   ws.roomCode    = null;
   ws.playerIndex = -1;
+  ws.isAlive     = true;
+
+  ws.on('pong', () => { ws.isAlive = true; });
 
   ws.on('message', raw => {
     let msg;
@@ -45,11 +48,10 @@ wss.on('connection', ws => {
         room.p2        = ws;
         ws.roomCode    = code;
         ws.playerIndex = 1;
-        send(ws,     { type: 'room_joined',     player: 1 });
+        send(ws,      { type: 'room_joined',     player: 1 });
         send(room.p1, { type: 'opponent_joined' });
         break;
       }
-      // Relay these messages verbatim to the other player
       case 'shot':
       case 'new_round':
         send(opponent(ws), msg);
@@ -62,5 +64,22 @@ wss.on('connection', ws => {
     rooms.delete(ws.roomCode);
   });
 });
+
+// Ping every 25 seconds — keeps connections alive through Render's proxy
+// and detects dead connections that didn't send a clean close frame
+const pingInterval = setInterval(() => {
+  wss.clients.forEach(ws => {
+    if (!ws.isAlive) {
+      // No pong since last ping — connection is dead, terminate it
+      send(opponent(ws), { type: 'opponent_disconnected' });
+      rooms.delete(ws.roomCode);
+      return ws.terminate();
+    }
+    ws.isAlive = false;
+    ws.ping();
+  });
+}, 25000);
+
+wss.on('close', () => clearInterval(pingInterval));
 
 console.log(`Carrom server running on port ${process.env.PORT || 8080}`);
